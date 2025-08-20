@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from logging import Logger
 
 from markitdown import MarkItDown
+from markitdown._exceptions import UnsupportedFormatException
 from redis import Redis
 
 from ..config import Config
@@ -61,13 +62,22 @@ def convert(p_logger: Logger, request: Request) -> Response200:
             with open(input_file.name, 'wb') as file:
                 file.write(base64.b64decode(request.content))
 
-            converted_document = markitdown.convert(
-                input_file.name,
-                request_id=request_id,
-                llm_prompt=BASIC_PROMPT,
-                llm_api_key=config.openai.api_key,
-                llm_base_url=config.openai.base_url
-            ).text_content
+            try:
+                converted_document = markitdown.convert(
+                    input_file.name,
+                    request_id=request_id,
+                    llm_prompt=BASIC_PROMPT,
+                    llm_api_key=config.openai.api_key,
+                    llm_base_url=config.openai.base_url
+                ).text_content
+            except UnsupportedFormatException as exc:
+                logger.warning(f"file {request.extension} is not supported: {exc}")
+                try:
+                    with open(input_file.name) as file:
+                        converted_document = file.read()
+                except UnicodeDecodeError:
+                    logger.warning("cannot decode file")
+                    raise
 
         with Redis(os.getenv('REDIS_HOST')) as redis:
             token_usage = _get_used_tokens(redis, request_id)
