@@ -33,51 +33,48 @@ class Image(BaseModel):
 
     @staticmethod
     def from_yandex(data) -> Optional[Image]:
-        try:
-            width = int(data['result']['textAnnotation']['width'])
-            height = int(data['result']['textAnnotation']['height'])
+        width = int(data.get('result', {}).get('textAnnotation', {}).get('width', 0))
+        height = int(data.get('result', {}).get('textAnnotation', {}).get('height', 0))
 
-            if not width or not height:
-                return None
-
-            blocks = []
-
-            for raw_block in data['result']['textAnnotation']['blocks']:
-                for line in raw_block['lines']:
-                    vertices = line['boundingBox']['vertices']
-
-                    block = Block(
-                        text=line['text'],
-                        bounding_box=Block.BoundingBox(
-                            top_left=Block.Coordinate(
-                                x=int(vertices[0]['x']),
-                                y=int(vertices[0]['y'])
-                            ),
-                            bottom_left=Block.Coordinate(
-                                x=int(vertices[1]['x']),
-                                y=int(vertices[1]['y'])
-                            ),
-                            bottom_right=Block.Coordinate(
-                                x=int(vertices[2]['x']),
-                                y=int(vertices[2]['y'])
-                            ),
-                            top_right=Block.Coordinate(
-                                x=int(vertices[3]['x']),
-                                y=int(vertices[3]['y'])
-                            )
-                        ),
-                        orientation=line['orientation']
-                    )
-
-                    blocks.append(block)
-
-            return Image(
-                width=width,
-                height=height,
-                blocks=blocks
-            )
-        except KeyError:
+        if not data.get('result', {}).get('textAnnotation', {}).get('fullText'):
             return None
+
+        blocks = []
+
+        for raw_block in data['result']['textAnnotation']['blocks']:
+            for line in raw_block['lines']:
+                vertices = line['boundingBox']['vertices']
+
+                block = Block(
+                    text=line['text'],
+                    bounding_box=Block.BoundingBox(
+                        top_left=Block.Coordinate(
+                            x=int(vertices[0]['x']),
+                            y=int(vertices[0]['y'])
+                        ),
+                        bottom_left=Block.Coordinate(
+                            x=int(vertices[1]['x']),
+                            y=int(vertices[1]['y'])
+                        ),
+                        bottom_right=Block.Coordinate(
+                            x=int(vertices[2]['x']),
+                            y=int(vertices[2]['y'])
+                        ),
+                        top_right=Block.Coordinate(
+                            x=int(vertices[3]['x']),
+                            y=int(vertices[3]['y'])
+                        )
+                    ),
+                    orientation=line['orientation']
+                )
+
+                blocks.append(block)
+
+        return Image(
+            width=width,
+            height=height,
+            blocks=blocks
+        )
 
 
 def process_image(file_stream: BinaryIO, api_key: str) -> Optional[Image]:

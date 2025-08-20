@@ -3,6 +3,8 @@ You are given OCR data: each block of text has a bounding box. The coordinates o
 You must convert this data into an html table to make it easier to read.
 The output must contain only text without metadata.
 Important: OCR can make mistakes when breaking text into blocks when it belongs to one block - focus on the coordinates of the bounding box. You must also correct errors resulting from incorrect character recognition, such errors are rare.
+
+Get straight to the answer: don't add any extra data like ```md etc.
 """
 
 COMPOSED_IMAGE_TO_MARKDOWN = """
@@ -11,10 +13,15 @@ Use the input image to understand the document formatting and its graphical elem
 The output should be a Markdown representation of the image: it should contain all the text detected in the image in its original formatting with graphical elements of the image, such as arrows, boxes, diagrams, etc., translated into text.
 The user should be able to obtain all the information contained in the image using only your output.
 
+Get straight to the answer: don't add any extra data like ```md etc.
+
 COMMENT: Tables must be presented in html format
 """
 
 GRAPHIC_IMAGE_TO_MARKDOWN = """
 Convert the resulting image to Markdown.
 The user should be able to get all the information contained in the image using only your output.
+If there is nothing in the image, indicate this.
+
+Get straight to the answer: don't add any extra data like ```md etc.
 """
