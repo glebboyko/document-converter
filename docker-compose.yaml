@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: .
+    ports:
+      - "8110:8000"
+    restart: always
+    volumes:
+      - ./config/config.json:/config/config.json
+    networks:
+      - backend
+    environment:
+      CONFIG_PATH: '/config/config.json'
+      REDIS_HOST: 'redis'
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+
+
+networks:
+  backend:
+
+volumes:
+  redis-data:

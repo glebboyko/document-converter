@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: Document Converter
+  version: 0.1.0
+servers:
+  - url: https://document-converter.api.lafresa.org
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      name: api-key
+      in: header
+  schemas:
+    TokenUsage:
+      type: object
+      properties:
+        input:
+          type: integer
+          description: Number of input tokens used
+          example: 1200
+        output:
+          type: integer
+          description: Number of output tokens used
+          example: 800
+    ConvertToMarkdownRequest:
+      type: object
+      required:
+        - content
+        - extension
+      properties:
+        content:
+          type: string
+          description: Base64 encoded file contents
+        extension:
+          type: string
+          description: File extension (e.g., pdf, docx)
+        llm_model:
+          type: string
+          description: (Optional) LLM models to use for conversion
+    ConvertToMarkdownResponse:
+      type: object
+      properties:
+        md:
+          type: string
+          description: Converted markdown result
+        llm_model:
+          type: string
+          description: Used LLM models
+        token_usage:
+          $ref: '#/components/schemas/TokenUsage'
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+paths:
+  /api/v1/convert/to-markdown:
+    post:
+      tags:
+        - Converter
+      summary: Convert document to markdown
+      operationId: convertToMarkdown
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        description: Base64 encoded document and parameters
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertToMarkdownRequest'
+      responses:
+        '200':
+          description: Conversion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertToMarkdownResponse'
+        '401':
+          description: Unauthorized - API key missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity - Invalid input file or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+security:
+  - ApiKeyAuth: []
