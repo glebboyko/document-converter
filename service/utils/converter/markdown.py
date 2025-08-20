@@ -58,7 +58,7 @@ def convert(p_logger: Logger, request: Request) -> Response200:
     try:
         markitdown = MarkItDown(enable_plugins=True)
 
-        with tempfile.NamedTemporaryFile(suffix=request.extension) as input_file:
+        with tempfile.NamedTemporaryFile(suffix=f'.{request.extension}') as input_file:
             with open(input_file.name, 'wb') as file:
                 file.write(base64.b64decode(request.content))
 
