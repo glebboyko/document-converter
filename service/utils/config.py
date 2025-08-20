@@ -17,12 +17,15 @@ class Config(BaseModel):
 
     class Openai(BaseModel):
         api_key: str
-        default_model: str
+        default_model_ocr: str
+        default_model_image: str
         base_url: Optional[str] = None
 
 
     auth: AuthConfig
     openai: Openai
+    yandex_ocr_api_key: str
+
     running: Running
 
     @staticmethod

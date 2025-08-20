@@ -34,20 +34,31 @@ components:
         extension:
           type: string
           description: File extension (e.g., pdf, docx)
-        llm_model:
+        llm_model_ocr:
           type: string
-          description: (Optional) LLM models to use for conversion
+          nullable: true
+          description: (Optional) LLM model to use for OCR
+        llm_model_image:
+          type: string
+          nullable: true
+          description: (Optional) LLM model to use for image interpretation
     ConvertToMarkdownResponse:
       type: object
       properties:
         md:
           type: string
           description: Converted markdown result
-        llm_model:
+        llm_model_ocr:
           type: string
-          description: Used LLM models
+          description: LLM model used for OCR
+        llm_model_image:
+          type: string
+          description: LLM model used for image interpretation
         token_usage:
-          $ref: '#/components/schemas/TokenUsage'
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/TokenUsage'
+          description: Dictionary mapping LLM model name to its token usage
     ErrorResponse:
       type: object
       properties:

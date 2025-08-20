@@ -6,7 +6,8 @@ from pydantic import BaseModel
 class Request(BaseModel):
     content: str
     extension: str
-    llm_model: Optional[str] = None
+    llm_model_ocr: Optional[str] = None
+    llm_model_image: Optional[str] = None
 
 
 class Response200(BaseModel):
@@ -15,5 +16,6 @@ class Response200(BaseModel):
         output: int
 
     md: str
-    llm_model: str
-    token_usage: TokenUsage
+    llm_model_ocr: str
+    llm_model_image: str
+    token_usage: dict[str, TokenUsage]

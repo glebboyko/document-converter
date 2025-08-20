@@ -1,6 +1,4 @@
-import base64
 import logging
-import mimetypes
 import os
 from typing import BinaryIO, Any
 
@@ -12,6 +10,9 @@ from markitdown import (
     StreamInfo,
 )
 from redis import Redis
+
+from ._utils import gpt_vision
+from ._utils import yandex_ocr
 
 __plugin_interface_version__ = (
     1  # The version of the plugin interface that this plugin uses
@@ -62,42 +63,44 @@ class ImageConverter(DocumentConverter):
         return Redis(host=os.getenv('REDIS_HOST'))
 
     @staticmethod
-    def _get_llm_model(request_id: str) -> str:
+    def _get_llm_models(request_id: str) -> tuple[str, str]:
         with ImageConverter._get_redis() as redis_client:
-            llm_model = redis_client.hget(request_id, 'llm_model').decode()
+            llm_model_table = redis_client.hget(request_id, 'llm_model_ocr').decode()
+            llm_model_image = redis_client.hget(request_id, 'llm_model_image').decode()
 
-        assert llm_model is not None
+        assert llm_model_table is not None and llm_model_image is not None
 
-        return llm_model
-
-    @staticmethod
-    def _get_used_tokens(redis_client: Redis, request_id: str) -> tuple[int, int]:
-        in_tokens = redis_client.hget(request_id, 'in_tokens') or 0
-        out_tokens = redis_client.hget(request_id, 'out_tokens') or 0
-
-        return int(in_tokens), int(out_tokens)
+        return llm_model_table, llm_model_image
 
     @staticmethod
-    def _set_used_tokens(redis_client: Redis, request_id: str, in_tokens: int, out_tokens: int):
-        redis_client.hset(request_id, 'in_tokens', str(in_tokens))
-        redis_client.hset(request_id, 'out_tokens', str(out_tokens))
+    def _get_used_tokens(redis_client: Redis, request_id: str, table_model: bool) -> gpt_vision.TokenUsage:
+        in_tokens = redis_client.hget(request_id, 'llm_ocr_in_tokens' if table_model else 'llm_image_in_tokens') or 0
+        out_tokens = redis_client.hget(request_id,
+                                       'llm_ocr_out_tokens' if table_model else 'llm_image_out_tokens') or 0
+
+        return gpt_vision.TokenUsage(
+            input=in_tokens,
+            output=out_tokens
+        )
 
     @staticmethod
-    def _update_used_tokens(request_id: str, in_tokens: int, out_tokens: int):
+    def _set_used_tokens(redis_client: Redis, request_id: str, table_model: bool, tokens: gpt_vision.TokenUsage):
+        redis_client.hset(request_id, 'llm_ocr_in_tokens' if table_model else 'llm_image_in_tokens',
+                          str(tokens.input))
+        redis_client.hset(request_id, 'llm_ocr_out_tokens' if table_model else 'llm_image_out_tokens',
+                          str(tokens.output))
+
+    @staticmethod
+    def _update_used_tokens(request_id: str, table_model: bool, tokens: gpt_vision.TokenUsage):
         with ImageConverter._get_redis() as redis_client:
-            curr_in_tokens, curr_out_tokens = ImageConverter._get_used_tokens(redis_client, request_id)
-            ImageConverter._set_used_tokens(redis_client, request_id, curr_in_tokens + in_tokens,
-                                            curr_out_tokens + out_tokens)
+            curr_tokens = ImageConverter._get_used_tokens(redis_client, request_id, table_model)
 
-    @staticmethod
-    def _convert_to_b64(file_stream: BinaryIO) -> str:
-        cur_pos = file_stream.tell()
-        try:
-            b64 = base64.b64encode(file_stream.read()).decode("utf-8")
-        finally:
-            file_stream.seek(cur_pos)
+            result_tokens = gpt_vision.TokenUsage(
+                input=curr_tokens.input + tokens.input,
+                output=curr_tokens.output + tokens.output
+            )
 
-        return b64
+            ImageConverter._set_used_tokens(redis_client, request_id, table_model, result_tokens)
 
     def convert(
             self,
@@ -109,56 +112,35 @@ class ImageConverter(DocumentConverter):
 
         try:
             request_id = kwargs.get('request_id')
-            prompt = kwargs.get('llm_prompt')
 
-            api_key = kwargs.get('llm_api_key')
+            ocr_api_key = kwargs.get('ocr_api_key')
+            llm_api_key = kwargs.get('llm_api_key')
             base_url = kwargs.get('llm_base_url')
 
-            llm_client = openai.Client(api_key=api_key, base_url=base_url)
-            llm_model = self._get_llm_model(request_id)
+            llm_client = openai.Client(api_key=llm_api_key, base_url=base_url)
+            llm_model_table, llm_model_image = self._get_llm_models(request_id)
 
-            assert prompt is not None
+            ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
 
-            base_64_image = self._convert_to_b64(file_stream)
+            if ocr_image:
+                logger.info("image contain text. converting to table...")
+                image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
+                self._update_used_tokens(request_id, True, token_usage)
+                logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
 
-            content_type = stream_info.mimetype
-            if not content_type:
-                content_type, _ = mimetypes.guess_type(
-                    "_dummy" + (stream_info.extension or "")
-                )
-            if not content_type:
-                content_type = "application/octet-stream"
+                content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, stream_info, image_table, llm_client, llm_model_image)
+                self._update_used_tokens(request_id, False, token_usage)
+                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+            else:
+                logger.info("image does not contain text. converting to markdown...")
+                content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, stream_info, llm_client,
+                                                                            llm_model_image)
+                self._update_used_tokens(request_id, False, token_usage)
+                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
 
-            messages = [
-                {
-                    'role': 'user',
-                    'content': [
-                        {
-                            'type': 'input_text',
-                            'text': prompt
-                        },
-                        {
-                            'type': 'input_image',
-                            'image_url': f'data:{content_type};base64,{base_64_image}'
-                        }
-                    ]
-                }
-            ]
-
-            response = llm_client.responses.create(
-                model=llm_model,
-                input=messages
-            )
-
-            self._update_used_tokens(request_id, response.usage.input_tokens, response.usage.output_tokens)
-
-            md_content = response.output_text
-
-            logger.info(
-                f"image converted successfully: {response.id}: {response.usage.input_tokens}, {response.usage.output_tokens}")
 
             return DocumentConverterResult(
-                markdown=md_content,
+                markdown=content,
             )
         except Exception as exc:
             logger.error(f'cannot convert image: {exc}')

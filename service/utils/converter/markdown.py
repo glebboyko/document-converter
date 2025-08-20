@@ -9,32 +9,39 @@ from markitdown._exceptions import UnsupportedFormatException
 from redis import Redis
 
 from ..config import Config
-from ..prompts import BASIC_PROMPT
 from ...models.convert.markdown import Request, Response200
 
 
-def _register_request(redis: Redis, config: Config, request: Request) -> tuple[str, str]:
+def _register_request(redis: Redis, config: Config, request: Request) -> tuple[str, str, str]:
     request_id = str(redis.incr('curr_request_id'))
 
-    model = request.llm_model or config.openai.default_model
+    ocr_model = request.llm_model_ocr or config.openai.default_model_ocr
+    image_model = request.llm_model_image or config.openai.default_model_image
 
     mapping = {
-        'llm_model': model,
+        'llm_model_ocr': ocr_model,
+        'llm_model_image': image_model,
         'created_dt': datetime.now().astimezone(timezone.utc).isoformat()
     }
 
     redis.hset(request_id, mapping=mapping)
 
-    return request_id, model
+    return request_id, ocr_model, image_model
 
 
-def _get_used_tokens(redis: Redis, request_id: str) -> Response200.TokenUsage:
-    in_tokens = redis.hget(request_id, 'in_tokens') or 0
-    out_tokens = redis.hget(request_id, 'out_tokens') or 0
+def _get_used_tokens(redis: Redis, request_id: str) -> tuple[Response200.TokenUsage, Response200.TokenUsage]:
+    llm_ocr_in_tokens = redis.hget(request_id, 'llm_ocr_in_tokens') or 0
+    llm_ocr_out_tokens = redis.hget(request_id, 'llm_ocr_out_tokens') or 0
+
+    llm_image_in_tokens = redis.hget(request_id, 'llm_image_in_tokens') or 0
+    llm_image_out_tokens = redis.hget(request_id, 'llm_image_out_tokens') or 0
 
     return Response200.TokenUsage(
-        input=int(in_tokens),
-        output=int(out_tokens)
+        input=llm_ocr_in_tokens,
+        output=llm_ocr_out_tokens
+    ), Response200.TokenUsage(
+        input=llm_image_in_tokens,
+        output=llm_image_out_tokens
     )
 
 
@@ -49,7 +56,7 @@ def convert(p_logger: Logger, request: Request) -> Response200:
         config = Config.get_config()
 
         with Redis(os.getenv('REDIS_HOST')) as redis:
-            request_id, llm_model = _register_request(redis, config, request)
+            request_id, llm_model_ocr, llm_model_image = _register_request(redis, config, request)
             logger.info(f"registered request {request_id}")
     except Exception as exc:
         logger.error(f"cannot register request: {exc}")
@@ -66,7 +73,7 @@ def convert(p_logger: Logger, request: Request) -> Response200:
                 converted_document = markitdown.convert(
                     input_file.name,
                     request_id=request_id,
-                    llm_prompt=BASIC_PROMPT,
+                    ocr_api_key=config.yandex_ocr_api_key,
                     llm_api_key=config.openai.api_key,
                     llm_base_url=config.openai.base_url
                 ).text_content
@@ -80,8 +87,13 @@ def convert(p_logger: Logger, request: Request) -> Response200:
                     raise
 
         with Redis(os.getenv('REDIS_HOST')) as redis:
-            token_usage = _get_used_tokens(redis, request_id)
-            logger.info(f"request {request_id} processed successfully: {len(converted_document)} ({token_usage})")
+            token_usage_ocr, token_usage_image = _get_used_tokens(redis, request_id)
+
+        token_usage = {
+            "token_usage_ocr": token_usage_ocr,
+            "token_usage_image": token_usage_image
+        }
+        logger.info(f"request {request_id} processed successfully: {len(converted_document)} ({token_usage})")
     except Exception as exc:
         logger.error(f"cannot process request: {exc}")
         raise
@@ -91,6 +103,7 @@ def convert(p_logger: Logger, request: Request) -> Response200:
 
     return Response200(
         md=converted_document,
-        llm_model=llm_model,
+        llm_model_ocr=llm_model_ocr,
+        llm_model_image=llm_model_image,
         token_usage=token_usage
     )
