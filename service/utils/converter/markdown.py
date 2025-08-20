@@ -90,8 +90,8 @@ def convert(p_logger: Logger, request: Request) -> Response200:
             token_usage_ocr, token_usage_image = _get_used_tokens(redis, request_id)
 
         token_usage = {
-            "token_usage_ocr": token_usage_ocr,
-            "token_usage_image": token_usage_image
+            "llm_model_ocr": token_usage_ocr,
+            "llm_model_image": token_usage_image
         }
         logger.info(f"request {request_id} processed successfully: {len(converted_document)} ({token_usage})")
     except Exception as exc:
