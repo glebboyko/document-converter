@@ -1,5 +1,4 @@
 fastapi==0.116.1
-markitdown[all]==0.1.2
 openai==1.100.0
 redis==6.2.0
 sentry-sdk==2.24.1

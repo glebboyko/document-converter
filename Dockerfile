@@ -9,9 +9,9 @@ COPY requirements.txt .
 
 RUN pip3 install -r requirements.txt
 
-COPY markitdown_ocr_plugin markitdown_ocr_plugin
+COPY markitdown/packages/markitdown markitdown
 
-RUN pip3 install -e markitdown_ocr_plugin
+RUN pip3 install ./markitdown[all]
 
 COPY service service
 
