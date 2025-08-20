@@ -3,20 +3,11 @@ import os
 from typing import BinaryIO, Any
 
 import openai
-from markitdown import (
-    MarkItDown,
-    DocumentConverter,
-    DocumentConverterResult,
-    StreamInfo,
-)
 from redis import Redis
 
-from ._utils import gpt_vision
-from ._utils import yandex_ocr
-
-__plugin_interface_version__ = (
-    1  # The version of the plugin interface that this plugin uses
-)
+from .._base_converter import DocumentConverter, DocumentConverterResult
+from .._stream_info import StreamInfo
+from ..converter_utils.img_converter import gpt_vision, yandex_ocr, image_encoders
 
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "image/jpeg",
@@ -26,25 +17,16 @@ ACCEPTED_MIME_TYPE_PREFIXES = [
 ACCEPTED_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
-def register_converters(markitdown: MarkItDown, **kwargs):
-    """
-    Called during construction of MarkItDown instances to register converters provided by plugins.
-    """
-
-    # Simply create and attach an RtfConverter instance
-    markitdown.register_converter(ImageConverter())
-
-
 class ImageConverter(DocumentConverter):
     """
-    Converts images to markdown via description via a multimodal LLM.
+    Converts images to markdown via extraction of metadata (if `exiftool` is installed), and description via a multimodal LLM (if an llm_client is configured).
     """
 
     def accepts(
-            self,
-            file_stream: BinaryIO,
-            stream_info: StreamInfo,
-            **kwargs: Any,
+        self,
+        file_stream: BinaryIO,
+        stream_info: StreamInfo,
+        **kwargs: Any,
     ) -> bool:
         mimetype = (stream_info.mimetype or "").lower()
         extension = (stream_info.extension or "").lower()
@@ -79,8 +61,8 @@ class ImageConverter(DocumentConverter):
                                        'llm_ocr_out_tokens' if table_model else 'llm_image_out_tokens') or 0
 
         return gpt_vision.TokenUsage(
-            input=in_tokens,
-            output=out_tokens
+            input=int(in_tokens),
+            output=int(out_tokens)
         )
 
     @staticmethod
@@ -122,19 +104,20 @@ class ImageConverter(DocumentConverter):
 
             ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
 
+            file_stream = image_encoders.to_png(file_stream)
+
             if ocr_image:
                 logger.info("image contain text. converting to table...")
                 image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
                 self._update_used_tokens(request_id, True, token_usage)
                 logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
 
-                content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, stream_info, image_table, llm_client, llm_model_image)
+                content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, image_table, llm_client, llm_model_image)
                 self._update_used_tokens(request_id, False, token_usage)
                 logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
             else:
                 logger.info("image does not contain text. converting to markdown...")
-                content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, stream_info, llm_client,
-                                                                            llm_model_image)
+                content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, llm_client, llm_model_image)
                 self._update_used_tokens(request_id, False, token_usage)
                 logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
 

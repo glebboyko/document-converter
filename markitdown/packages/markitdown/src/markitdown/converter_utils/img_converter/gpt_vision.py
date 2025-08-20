@@ -1,13 +1,11 @@
 from dataclasses import dataclass
 from typing import BinaryIO
 
-from markitdown import StreamInfo
 from openai import Client as LlmClient
 
 from .image_encoders import encode_gpt_url
 from .prompts import OCR_TO_TABLE, COMPOSED_IMAGE_TO_MARKDOWN, GRAPHIC_IMAGE_TO_MARKDOWN
 from .yandex_ocr import Image
-
 
 @dataclass
 class TokenUsage:
@@ -50,7 +48,7 @@ def ocr_to_table(image: Image, llm_client: LlmClient, llm_model: str) -> tuple[s
     return response.output_text, token_usage
 
 
-def composed_image_to_markdown(file_stream: BinaryIO, stream_info: StreamInfo, image_table: str, llm_client: LlmClient,
+def composed_image_to_markdown(file_stream: BinaryIO, image_table: str, llm_client: LlmClient,
                                llm_model: str) -> tuple[str, TokenUsage]:
     messages = [
         {
@@ -71,7 +69,7 @@ def composed_image_to_markdown(file_stream: BinaryIO, stream_info: StreamInfo, i
                 },
                 {
                     'type': 'input_image',
-                    'image_url': encode_gpt_url(file_stream, stream_info)
+                    'image_url': encode_gpt_url(file_stream)
                 }
             ]
         }
@@ -90,7 +88,7 @@ def composed_image_to_markdown(file_stream: BinaryIO, stream_info: StreamInfo, i
     return response.output_text, token_usage
 
 
-def graphic_image_to_markdown(file_stream: BinaryIO, stream_info: StreamInfo, llm_client: LlmClient, llm_model: str) -> \
+def graphic_image_to_markdown(file_stream: BinaryIO, llm_client: LlmClient, llm_model: str) -> \
 tuple[str, TokenUsage]:
     messages = [
         {
@@ -107,7 +105,7 @@ tuple[str, TokenUsage]:
             'content': [
                 {
                     'type': 'input_image',
-                    'image_url': encode_gpt_url(file_stream, stream_info)
+                    'image_url': encode_gpt_url(file_stream)
                 }
             ]
         }
