@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 from typing import BinaryIO, Any
@@ -102,28 +103,33 @@ class ImageConverter(DocumentConverter):
             llm_client = openai.Client(api_key=llm_api_key, base_url=base_url)
             llm_model_table, llm_model_image = self._get_llm_models(request_id)
 
-            file_stream = image_encoders.to_png(file_stream, stream_info)
+            files_stream = image_encoders.to_png(file_stream, stream_info)
 
-            ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
+            full_content = io.StringIO()
+            for file_stream in files_stream:
+                ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
 
-            if ocr_image:
-                logger.info("image contain text. converting to table...")
-                image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
-                self._update_used_tokens(request_id, True, token_usage)
-                logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
+                if ocr_image:
+                    logger.info("image contain text. converting to table...")
+                    image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
+                    self._update_used_tokens(request_id, True, token_usage)
+                    logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
 
-                content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, image_table, llm_client, llm_model_image)
-                self._update_used_tokens(request_id, False, token_usage)
-                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
-            else:
-                logger.info("image does not contain text. converting to markdown...")
-                content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, llm_client, llm_model_image)
-                self._update_used_tokens(request_id, False, token_usage)
-                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+                    content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, image_table, llm_client, llm_model_image)
+                    self._update_used_tokens(request_id, False, token_usage)
+                    logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+                else:
+                    logger.info("image does not contain text. converting to markdown...")
+                    content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, llm_client, llm_model_image)
+                    self._update_used_tokens(request_id, False, token_usage)
+                    logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
 
 
+                full_content.write('\n```image_description\n' + content.strip() + '\n```\n')
+
+            full_content.seek(0)
             return DocumentConverterResult(
-                markdown=content,
+                markdown=full_content.read(),
             )
         except Exception as exc:
             logger.error(f'cannot convert image: {exc}')

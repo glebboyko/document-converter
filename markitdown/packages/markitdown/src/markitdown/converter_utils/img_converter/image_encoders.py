@@ -31,12 +31,12 @@ def _emf_to_svg(emf_bytes: bytes) -> bytes:
         with open(target_file, 'rb') as file:
             return file.read()
 
+
 def _svg_to_png(svg_bytes: bytes) -> bytes:
     return cairosvg.svg2png(dpi=300, bytestring=svg_bytes)
 
 
-
-def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
+def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> list[BinaryIO]:
     cur_pos = file_stream.tell()
     try:
         image_bytes = file_stream.read()
@@ -46,33 +46,38 @@ def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
     if stream_info.mimetype == 'image/x-emf':
         svg_bytes = _emf_to_svg(image_bytes)
         png_bytes = _svg_to_png(svg_bytes)
-        return io.BytesIO(png_bytes)
+        return [io.BytesIO(png_bytes)]
 
     if stream_info.mimetype == 'image/svg+xml':
         png_bytes = _svg_to_png(image_bytes)
-        return io.BytesIO(png_bytes)
+        return [io.BytesIO(png_bytes)]
 
-    cmd = [
-        "ffmpeg",
-        "-hide_banner", "-loglevel", "error",
-        "-i", "pipe:0",
-        "-f", "image2",
-        "-c:v", "png",
-        "-y",
-        "pipe:1"
-    ]
-    try:
-        proc = subprocess.run(
-            cmd,
-            input=image_bytes,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"ffmpeg conversion failed: {e.stderr.decode()}") from e
+    with tempfile.TemporaryDirectory() as out_dir:
+        cmd = [
+            "ffmpeg",
+            "-hide_banner", "-loglevel", "error",
+            "-i", "pipe:0",
+            "-f", "image2",
+            "-c:v", "png",
+            "-y",
+            os.path.join(out_dir, '%03d.png')
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=image_bytes,
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"ffmpeg conversion failed: {e.stderr.decode()}") from e
 
-    return io.BytesIO(proc.stdout)
+        imgs = []
+        for file_path in sorted(os.listdir(out_dir)):
+            file_path = os.path.join(out_dir, file_path)
+            with open(file_path, 'rb') as file:
+                imgs.append(io.BytesIO(file.read()))
+
+    return imgs
 
 
 def encode_base64(file_stream: BinaryIO) -> str:
