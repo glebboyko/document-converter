@@ -4,10 +4,12 @@ import json
 from typing import BinaryIO
 from typing import Optional
 
+from http import HTTPStatus
 import requests
 from pydantic import BaseModel
 
 from .image_encoders import encode_base64
+from ..rate_limit import handle_rate_limit
 
 
 class Block(BaseModel):
@@ -86,12 +88,21 @@ def process_image(file_stream: BinaryIO, api_key: str) -> Optional[Image]:
         'Authorization': f'Api-Key {api_key}'
     }
 
-    response = requests.post(
-        url='https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText',
-        data=json.dumps(data),
-        headers=headers
-    )
+    iter_idx = 0
+    while True:
+        response = requests.post(
+            url='https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText',
+            data=json.dumps(data),
+            headers=headers
+        )
 
-    response.raise_for_status()
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            handle_rate_limit(iter_idx)
+            iter_idx += 1
+            continue
+
+        response.raise_for_status()
+        break
+
 
     return Image.from_yandex(response.json())
