@@ -36,7 +36,7 @@ def _svg_to_png(svg_bytes: bytes) -> bytes:
     return cairosvg.svg2png(dpi=300, bytestring=svg_bytes)
 
 
-def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> list[BinaryIO]:
+def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
     cur_pos = file_stream.tell()
     try:
         image_bytes = file_stream.read()
@@ -46,11 +46,11 @@ def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> list[BinaryIO]:
     if stream_info.mimetype == 'image/x-emf':
         svg_bytes = _emf_to_svg(image_bytes)
         png_bytes = _svg_to_png(svg_bytes)
-        return [io.BytesIO(png_bytes)]
+        return io.BytesIO(png_bytes)
 
     if stream_info.mimetype == 'image/svg+xml':
         png_bytes = _svg_to_png(image_bytes)
-        return [io.BytesIO(png_bytes)]
+        return io.BytesIO(png_bytes)
 
     with tempfile.TemporaryDirectory() as out_dir:
         cmd = [
@@ -77,7 +77,7 @@ def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> list[BinaryIO]:
             with open(file_path, 'rb') as file:
                 imgs.append(io.BytesIO(file.read()))
 
-    return imgs
+    return imgs[-1]
 
 
 def encode_base64(file_stream: BinaryIO) -> str:
