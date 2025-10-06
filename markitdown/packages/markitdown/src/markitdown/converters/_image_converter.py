@@ -103,7 +103,7 @@ class ImageConverter(DocumentConverter):
             llm_client = openai.Client(api_key=llm_api_key, base_url=base_url)
             llm_model_table, llm_model_image = self._get_llm_models(request_id)
 
-            file_stream = image_encoders.to_png(file_stream, stream_info)
+            file_stream = image_encoders.to_png(logger, file_stream, stream_info)
 
             ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
 

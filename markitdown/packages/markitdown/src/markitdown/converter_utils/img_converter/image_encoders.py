@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 from typing import BinaryIO
+from logging import Logger
 
 import cairosvg
 
@@ -36,7 +37,8 @@ def _svg_to_png(svg_bytes: bytes) -> bytes:
     return cairosvg.svg2png(dpi=300, bytestring=svg_bytes)
 
 
-def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
+def to_png(p_logger: Logger, file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
+    logger = p_logger.getChild('TO-PNG')
     cur_pos = file_stream.tell()
     try:
         image_bytes = file_stream.read()
@@ -69,7 +71,7 @@ def to_png(file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
                 check=True
             )
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"ffmpeg conversion failed: {e.stderr.decode()}") from e
+            raise RuntimeError(f"ffmpeg conversion failed: {e.stderr.decode() if e.stderr else None}") from e
 
         imgs = []
         for file_path in sorted(os.listdir(out_dir)):
