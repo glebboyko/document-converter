@@ -1,4 +1,5 @@
 import io
+import logging
 import sys
 from typing import BinaryIO, Any
 
@@ -56,6 +57,11 @@ class PdfConverter(DocumentConverter):
             stream_info: StreamInfo,
             **kwargs: Any,  # Options to pass to the converter
     ) -> DocumentConverterResult:
+        request_id = kwargs.get('request_id')
+        logger = logging.getLogger(f'PDF_CONVERTER:{request_id}')
+
+        logger.info("launching pdf converter...")
+
         # Check the dependencies
         if _dependency_exc_info is not None:
             raise MissingDependencyException(
