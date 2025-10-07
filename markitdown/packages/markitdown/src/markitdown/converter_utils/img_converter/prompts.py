@@ -17,7 +17,7 @@ The user should be able to obtain all the information contained in the image usi
 
 Get straight to the answer: don't add any extra data like ```md etc.
 
-COMMENT: Tables must be presented in html format
+COMMENT: If the result contains a table, the table must be presented in html format supported by md, any other element must be presented in Markdown format.
 """
 
 GRAPHIC_IMAGE_TO_MARKDOWN = """
