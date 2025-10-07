@@ -17,7 +17,16 @@ The user should be able to obtain all the information contained in the image usi
 
 Get straight to the answer: don't add any extra data like ```md etc.
 
-COMMENT: Table should be added to the result only if the source image contains it. If the source image contains a table, the table must be presented in html format supported by md, any other element must be presented in Markdown format. Do not add tables if the source image may be represented without it.
+## Tables
+Do not add tables if the source image may be represented without it. For example, if you received the document with header that contain some data horizontally (author -> title -> date), it can be represented without tables:
+```
+# Title
+_$autor_
+_$date_
+
+...
+```
+Table should be added to the result only if the source image contains it. The table must be presented in html format supported by md, any other element must be presented in Markdown format. 
 """
 
 GRAPHIC_IMAGE_TO_MARKDOWN = """
