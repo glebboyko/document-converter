@@ -9,7 +9,7 @@ Get straight to the answer: don't add any extra data like ```md etc.
 
 COMPOSED_IMAGE_TO_MARKDOWN = """
 You are given an image and a table containing the recognized text from the image. Using the data provided, convert the image to Markdown.
-Use the input image to understand the document formatting and its graphical elements. Use the table as a source of text for your work.
+Use the input image to understand the document formatting and its graphical elements. Use the table as a source of text for your work. Be conscious: styles should be inherited from the image, not from the recognized text.
 The output should be a Markdown representation of the image: it should contain all the text detected in the image in its original formatting and description of all graphical elements of the image, such as arrows, boxes, diagrams, etc., translated into text.
 If the image contains drawings, a full description of them must also be provided.
 
