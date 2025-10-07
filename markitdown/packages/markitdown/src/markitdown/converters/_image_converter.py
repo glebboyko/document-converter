@@ -99,6 +99,7 @@ class ImageConverter(DocumentConverter):
             ocr_api_key = kwargs.get('ocr_api_key')
             llm_api_key = kwargs.get('llm_api_key')
             base_url = kwargs.get('llm_base_url')
+            is_page = kwargs.get('image_is_page', False)
 
             llm_client = openai.Client(api_key=llm_api_key, base_url=base_url)
             llm_model_table, llm_model_image = self._get_llm_models(request_id)
@@ -122,8 +123,11 @@ class ImageConverter(DocumentConverter):
                 self._update_used_tokens(request_id, False, token_usage)
                 logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
 
+            result = content.strip() + '\n'
+            if not is_page:
+                result = '\n```image_description\n' + result + '```\n'
             return DocumentConverterResult(
-                markdown='\n```image_description\n' + content.strip() + '\n```\n',
+                markdown=result,
             )
         except Exception as exc:
             logger.error(f'cannot convert image: {exc}')

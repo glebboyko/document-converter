@@ -3,6 +3,7 @@ import logging
 import sys
 from typing import BinaryIO, Any
 
+import pypdf
 from pdfminer.layout import LTTextContainer, LTImage, LTFigure
 
 from ._image_converter import ImageConverter
@@ -78,22 +79,43 @@ class PdfConverter(DocumentConverter):
 
         assert isinstance(file_stream, io.IOBase)  # for mypy
 
-        out = io.StringIO()
-        for page_no, layout in enumerate(pdfminer.high_level.extract_pages(file_stream), start=1):
-            for element in layout:
-                if isinstance(element, LTTextContainer):
-                    out.write(element.get_text())
-                elif isinstance(element, (LTImage, LTFigure)):
-                    for img in self._iter_images(element):
-                        file_stream = io.BytesIO(img.stream.get_data())
+        try:
+            out = io.StringIO()
+            for page_no, layout in enumerate(pdfminer.high_level.extract_pages(file_stream), start=1):
+                for element in layout:
+                    if isinstance(element, LTTextContainer):
+                        out.write(element.get_text())
+                    elif isinstance(element, (LTImage, LTFigure)):
+                        for img in self._iter_images(element):
+                            img_stream = io.BytesIO(img.stream.get_data())
 
-                        try:
-                            extension = f".{img.name.split('.')[-1]}"
-                        except Exception:
-                            extension = None
-                        stream_info = StreamInfo(extension=extension)
+                            try:
+                                extension = f".{img.name.split('.')[-1]}"
+                            except Exception:
+                                extension = None
+                            stream_info = StreamInfo(extension=extension)
 
-                        out.write(ImageConverter().convert(file_stream, stream_info, **kwargs).text_content)
+                            out.write(ImageConverter().convert(img_stream, stream_info, **kwargs).text_content)
+        except Exception as exc:
+            logger.warning(f"cannot process pdf in normal way: {exc}")
+            logger.info("trying to process pdf as images")
+
+            file_stream.seek(0)
+            out = io.StringIO()
+
+            reader = pypdf.PdfReader(file_stream)
+            for page in reader.pages:
+                for image in page.images:
+                    try:
+                        extension = f".{image.name.split('.')[-1]}"
+                    except Exception:
+                        extension = None
+                    stream_info = StreamInfo(extension=extension)
+
+                    out.write(ImageConverter().convert(io.BytesIO(image.data), stream_info, image_is_page=True,
+                                                       **kwargs).text_content)
+
+            logger.info("pdf precessed as images successfully")
 
         out.seek(0)
 
