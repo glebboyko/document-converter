@@ -1,11 +1,14 @@
 #!/usr/bin/env python3 -m pytest
 import io
+import logging
 import os
 import re
 import shutil
 import pytest
+from PIL import Image
 
 from markitdown._uri_utils import parse_data_uri, file_uri_to_path
+from markitdown.converter_utils.img_converter import image_encoders
 
 from markitdown import (
     MarkItDown,
@@ -217,6 +220,48 @@ def test_data_uris() -> None:
     assert len(attributes) == 1
     assert attributes["charset"] == "utf-8"
     assert data == b"Hello, World!"
+
+
+def _create_png_stream(width: int, height: int) -> io.BytesIO:
+    image = Image.new("RGB", (width, height), color="white")
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    stream.seek(0)
+
+    return stream
+
+
+def test_image_chunk_axis_ranges() -> None:
+    assert image_encoders._calculate_axis_ranges(2000, 2000, 200) == [(0, 2000)]
+    assert image_encoders._calculate_axis_ranges(4100, 2000, 200) == [
+        (0, 2000),
+        (1800, 3800),
+        (3600, 4100),
+    ]
+    assert image_encoders._calculate_axis_ranges(2100, 2000, 200) == [
+        (0, 2000),
+        (1800, 2100),
+    ]
+
+
+def test_split_large_image_to_overlapping_chunks() -> None:
+    stream = _create_png_stream(4100, 2100)
+
+    chunks = image_encoders.split_to_png_chunks(logging.getLogger("TEST"), stream)
+
+    assert [(chunk.left, chunk.top, chunk.right, chunk.bottom) for chunk in chunks] == [
+        (0, 0, 2000, 2000),
+        (1800, 0, 3800, 2000),
+        (3600, 0, 4100, 2000),
+        (0, 1800, 2000, 2100),
+        (1800, 1800, 3800, 2100),
+        (3600, 1800, 4100, 2100),
+    ]
+
+    for chunk in chunks:
+        width, height = image_encoders.get_image_size(chunk.stream)
+        assert width <= image_encoders.MAX_IMAGE_CHUNK_SIZE
+        assert height <= image_encoders.MAX_IMAGE_CHUNK_SIZE
 
 
 def test_file_uris() -> None:

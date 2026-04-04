@@ -1,4 +1,3 @@
-import io
 import logging
 import os
 from typing import BinaryIO, Any
@@ -85,6 +84,99 @@ class ImageConverter(DocumentConverter):
 
             ImageConverter._set_used_tokens(redis_client, request_id, table_model, result_tokens)
 
+    def _convert_single_image(
+            self,
+            p_logger: logging.Logger,
+            request_id: str,
+            file_stream: BinaryIO,
+            ocr_api_key: str,
+            llm_client: openai.Client,
+            llm_model_table: str,
+            llm_model_image: str
+    ) -> tuple[str, dict[str, Any]]:
+        logger = p_logger.getChild('SI')
+        image_table = None
+
+        ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
+
+        if ocr_image:
+            logger.info("image contains text. converting to table...")
+            image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
+            self._update_used_tokens(request_id, True, token_usage)
+            logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
+
+            content, token_usage = gpt_vision.composed_image_to_markdown(
+                file_stream,
+                image_table,
+                llm_client,
+                llm_model_image
+            )
+            self._update_used_tokens(request_id, False, token_usage)
+            logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+        else:
+            logger.info("image does not contain text. converting to markdown...")
+            content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, llm_client, llm_model_image)
+            self._update_used_tokens(request_id, False, token_usage)
+            logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+
+        return content, {
+            'contains_text': ocr_image is not None,
+            'ocr_table': image_table,
+            'markdown': content.strip()
+        }
+
+    def _convert_large_image(
+            self,
+            p_logger: logging.Logger,
+            request_id: str,
+            file_stream: BinaryIO,
+            ocr_api_key: str,
+            llm_client: openai.Client,
+            llm_model_table: str,
+            llm_model_image: str
+    ) -> str:
+        logger = p_logger.getChild('LI')
+        chunks = image_encoders.split_to_png_chunks(p_logger, file_stream)
+        chunk_artifacts = []
+
+        logger.info(f"processing large image in {len(chunks)} overlapping chunks...")
+        for chunk in chunks:
+            logger.info(
+                f"processing chunk {chunk.index}/{len(chunks)}: "
+                f"({chunk.left}, {chunk.top}) -> ({chunk.right}, {chunk.bottom})"
+            )
+            _, chunk_artifact = self._convert_single_image(
+                logger,
+                request_id,
+                chunk.stream,
+                ocr_api_key,
+                llm_client,
+                llm_model_table,
+                llm_model_image
+            )
+            chunk_artifacts.append({
+                'chunk_index': chunk.index,
+                'bounds': {
+                    'left': chunk.left,
+                    'top': chunk.top,
+                    'right': chunk.right,
+                    'bottom': chunk.bottom
+                },
+                **chunk_artifact
+            })
+
+        logger.info("merging chunk artifacts with the full image...")
+        content, token_usage = gpt_vision.merge_segmented_image_to_markdown(
+            file_stream,
+            chunk_artifacts,
+            llm_client,
+            llm_model_image
+        )
+        self._update_used_tokens(request_id, False, token_usage)
+        logger.info(f"large image merged to markdown with {llm_model_image}: {token_usage}")
+
+        return content
+
     def convert(
             self,
             file_stream: BinaryIO,
@@ -105,23 +197,32 @@ class ImageConverter(DocumentConverter):
             llm_model_table, llm_model_image = self._get_llm_models(request_id)
 
             file_stream = image_encoders.to_png(logger, file_stream, stream_info)
+            width, height = image_encoders.get_image_size(file_stream)
 
-            ocr_image = yandex_ocr.process_image(file_stream, ocr_api_key)
-
-            if ocr_image:
-                logger.info("image contain text. converting to table...")
-                image_table, token_usage = gpt_vision.ocr_to_table(ocr_image, llm_client, llm_model_table)
-                self._update_used_tokens(request_id, True, token_usage)
-                logger.info(f"image converted to table with {llm_model_table}: {token_usage}")
-
-                content, token_usage = gpt_vision.composed_image_to_markdown(file_stream, image_table, llm_client, llm_model_image)
-                self._update_used_tokens(request_id, False, token_usage)
-                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+            if width > image_encoders.MAX_IMAGE_CHUNK_SIZE or height > image_encoders.MAX_IMAGE_CHUNK_SIZE:
+                logger.info(
+                    f"image size {width}x{height} exceeds {image_encoders.MAX_IMAGE_CHUNK_SIZE}x"
+                    f"{image_encoders.MAX_IMAGE_CHUNK_SIZE}. switching to chunked OCR flow..."
+                )
+                content = self._convert_large_image(
+                    logger,
+                    request_id,
+                    file_stream,
+                    ocr_api_key,
+                    llm_client,
+                    llm_model_table,
+                    llm_model_image
+                )
             else:
-                logger.info("image does not contain text. converting to markdown...")
-                content, token_usage = gpt_vision.graphic_image_to_markdown(file_stream, llm_client, llm_model_image)
-                self._update_used_tokens(request_id, False, token_usage)
-                logger.info(f"image converted to markdown with {llm_model_image}: {token_usage}")
+                content, _ = self._convert_single_image(
+                    logger,
+                    request_id,
+                    file_stream,
+                    ocr_api_key,
+                    llm_client,
+                    llm_model_table,
+                    llm_model_image
+                )
 
             result = content.strip() + '\n'
             if not is_page:

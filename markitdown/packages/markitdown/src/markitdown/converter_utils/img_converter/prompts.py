@@ -36,3 +36,24 @@ If there is nothing in the image, indicate this.
 
 Get straight to the answer: don't add any extra data like ```md etc.
 """
+
+MERGE_SEGMENTED_IMAGE_TO_MARKDOWN = """
+You are given:
+1. The full source image.
+2. Recognition artifacts produced for multiple overlapping 2000x2000 image chunks. Each artifact contains the chunk coordinates, whether OCR text was found, the OCR-derived text table if available, and the Markdown generated for that chunk.
+
+Your task is to produce one final Markdown representation for the full source image.
+
+Rules:
+- Use the full image to recover the global reading order, full-page layout, and relationships between distant elements.
+- Use the chunk artifacts as hints for text and local details.
+- The chunks overlap, so the artifacts may contain duplicates. You must deduplicate repeated content and merge partial fragments into complete text.
+- Preserve the original document structure and formatting in Markdown.
+- If the source image contains a real table, render it as HTML supported by Markdown. Otherwise prefer normal Markdown structure.
+- Include descriptions of meaningful graphics, diagrams, arrows, callouts, and other visual elements.
+- Do not mention the chunking process or the artifacts in the output.
+
+The user should be able to obtain all information from the source image using only your output.
+
+Get straight to the answer: don't add any extra data like ```md etc.
+"""

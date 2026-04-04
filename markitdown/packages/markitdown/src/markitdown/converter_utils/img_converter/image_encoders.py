@@ -3,12 +3,62 @@ import io
 import os
 import subprocess
 import tempfile
-from typing import BinaryIO
+from dataclasses import dataclass
 from logging import Logger
+from typing import BinaryIO
 
 import cairosvg
+from PIL import Image as PilImage
 
 from ..._stream_info import StreamInfo
+
+MAX_IMAGE_CHUNK_SIZE = 2000
+DEFAULT_IMAGE_CHUNK_OVERLAP = 200
+
+
+@dataclass(frozen=True)
+class ImageChunk:
+    index: int
+    left: int
+    top: int
+    right: int
+    bottom: int
+    stream: io.BytesIO
+
+
+def _read_bytes(file_stream: BinaryIO) -> bytes:
+    cur_pos = file_stream.tell()
+    try:
+        return file_stream.read()
+    finally:
+        file_stream.seek(cur_pos)
+
+
+def _calculate_axis_ranges(length: int, block_size: int, overlap: int) -> list[tuple[int, int]]:
+    if length <= block_size:
+        return [(0, length)]
+
+    if block_size <= overlap:
+        raise ValueError("block_size must be greater than overlap")
+
+    stride = block_size - overlap
+    ranges = []
+    start = 0
+    while start < length:
+        end = min(start + block_size, length)
+        ranges.append((start, end))
+        if end == length:
+            break
+        start += stride
+
+    return ranges
+
+
+def get_image_size(file_stream: BinaryIO) -> tuple[int, int]:
+    image_bytes = _read_bytes(file_stream)
+
+    with PilImage.open(io.BytesIO(image_bytes)) as image:
+        return image.width, image.height
 
 
 def _emf_to_svg(emf_bytes: bytes) -> bytes:
@@ -39,11 +89,7 @@ def _svg_to_png(svg_bytes: bytes) -> bytes:
 
 def to_png(p_logger: Logger, file_stream: BinaryIO, stream_info: StreamInfo) -> BinaryIO:
     logger = p_logger.getChild('TO-PNG')
-    cur_pos = file_stream.tell()
-    try:
-        image_bytes = file_stream.read()
-    finally:
-        file_stream.seek(cur_pos)
+    image_bytes = _read_bytes(file_stream)
 
     if stream_info.mimetype == 'image/x-emf':
         svg_bytes = _emf_to_svg(image_bytes)
@@ -65,7 +111,7 @@ def to_png(p_logger: Logger, file_stream: BinaryIO, stream_info: StreamInfo) -> 
             os.path.join(out_dir, '%03d.png')
         ]
         try:
-            proc = subprocess.run(
+            subprocess.run(
                 cmd,
                 input=image_bytes,
                 check=True
@@ -82,12 +128,53 @@ def to_png(p_logger: Logger, file_stream: BinaryIO, stream_info: StreamInfo) -> 
     return imgs[-1]
 
 
-def encode_base64(file_stream: BinaryIO) -> str:
-    cur_pos = file_stream.tell()
+def split_to_png_chunks(
+        p_logger: Logger,
+        file_stream: BinaryIO,
+        block_size: int = MAX_IMAGE_CHUNK_SIZE,
+        overlap: int = DEFAULT_IMAGE_CHUNK_OVERLAP
+) -> list[ImageChunk]:
+    logger = p_logger.getChild('SP')
+
     try:
-        b64 = base64.b64encode(file_stream.read()).decode("utf-8")
-    finally:
-        file_stream.seek(cur_pos)
+        image_bytes = _read_bytes(file_stream)
+
+        with PilImage.open(io.BytesIO(image_bytes)) as image:
+            normalized_image = image.convert('RGB')
+            x_ranges = _calculate_axis_ranges(normalized_image.width, block_size, overlap)
+            y_ranges = _calculate_axis_ranges(normalized_image.height, block_size, overlap)
+
+            chunks = []
+            chunk_idx = 1
+            for top, bottom in y_ranges:
+                for left, right in x_ranges:
+                    cropped = normalized_image.crop((left, top, right, bottom))
+                    chunk_stream = io.BytesIO()
+                    cropped.save(chunk_stream, format='PNG')
+                    chunk_stream.seek(0)
+
+                    chunks.append(ImageChunk(
+                        index=chunk_idx,
+                        left=left,
+                        top=top,
+                        right=right,
+                        bottom=bottom,
+                        stream=chunk_stream
+                    ))
+                    chunk_idx += 1
+
+            logger.debug(
+                f'split image {normalized_image.width}x{normalized_image.height} into {len(chunks)} '
+                f'chunks of up to {block_size}x{block_size} with overlap {overlap}'
+            )
+            return chunks
+    except Exception as exc:
+        logger.error(f'cannot split image into chunks: {exc}')
+        raise
+
+
+def encode_base64(file_stream: BinaryIO) -> str:
+    b64 = base64.b64encode(_read_bytes(file_stream)).decode("utf-8")
 
     return b64
 
