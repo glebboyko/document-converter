@@ -3,7 +3,7 @@ services:
     build:
       context: .
     ports:
-      - "8110:8000"
+      - "127.0.0.1:8110:8000"
     restart: always
     volumes:
       - ./config/config.json:/config/config.json
