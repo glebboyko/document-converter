@@ -26,3 +26,4 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 app.include_router(routing.v1.router)
+app.include_router(routing.mistral.router)

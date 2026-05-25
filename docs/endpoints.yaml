@@ -60,6 +60,82 @@ components:
         detail:
           type: string
           description: Error message
+    OcrDocumentBase64:
+      type: object
+      required:
+        - type
+        - document_base64
+        - document_name
+      properties:
+        type:
+          type: string
+          enum: [document_base64]
+        document_base64:
+          type: string
+          description: Base64 encoded file contents
+        document_name:
+          type: string
+          description: Original filename (extension is used to detect format)
+    OcrRequest:
+      type: object
+      required:
+        - model
+        - document
+      properties:
+        model:
+          type: string
+          description: Model identifier echoed back in the response
+        document:
+          $ref: '#/components/schemas/OcrDocumentBase64'
+        id:
+          type: string
+          nullable: true
+        pages:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        include_image_base64:
+          type: boolean
+          nullable: true
+        image_limit:
+          type: integer
+          nullable: true
+        image_min_size:
+          type: integer
+          nullable: true
+    OcrPage:
+      type: object
+      properties:
+        index:
+          type: integer
+          example: 0
+        markdown:
+          type: string
+        images:
+          type: array
+          items: {}
+        dimensions:
+          type: object
+    OcrUsageInfo:
+      type: object
+      properties:
+        pages_processed:
+          type: integer
+          example: 1
+        doc_size_bytes:
+          type: integer
+    OcrResponse:
+      type: object
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/OcrPage'
+        model:
+          type: string
+        usage_info:
+          $ref: '#/components/schemas/OcrUsageInfo'
 paths:
   /api/v1/convert/to-markdown:
     post:
@@ -81,6 +157,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConvertToMarkdownResponse'
+        '422':
+          description: Unprocessable Entity - Invalid input file or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/ocr:
+    post:
+      tags:
+        - Converter
+      summary: Azure Mistral-compatible OCR endpoint
+      operationId: ocr
+      requestBody:
+        description: Mistral OCR-style request with base64 document
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OcrRequest'
+      responses:
+        '200':
+          description: OCR successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OcrResponse'
         '422':
           description: Unprocessable Entity - Invalid input file or parameters
           content:

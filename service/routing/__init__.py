@@ -1,1 +1,1 @@
-from . import v1
+from . import mistral, v1

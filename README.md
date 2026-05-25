@@ -31,3 +31,7 @@ API будет доступно по адресу `http://127.0.0.1:8110`.
 ## To Markdown
 
 `POST /api/v1/convert/to-markdown` — конвертация документа в Markdown. Авторизация не требуется. Описание схемы запросов и ответов — в [docs/endpoints.yaml](docs/endpoints.yaml).
+
+## Azure Mistral OCR (совместимый эндпоинт)
+
+`POST /v1/ocr` — приём запросов в формате Mistral OCR API (`document_base64`), упрощённый ответ с одной склеенной страницей. Подробности — в [docs/endpoints.yaml](docs/endpoints.yaml).
