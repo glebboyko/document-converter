@@ -5,11 +5,6 @@ info:
 servers:
   - url: https://document-converter.api.lafresa.org
 components:
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      name: api-key
-      in: header
   schemas:
     TokenUsage:
       type: object
@@ -72,8 +67,6 @@ paths:
         - Converter
       summary: Convert document to markdown
       operationId: convertToMarkdown
-      security:
-        - ApiKeyAuth: []
       requestBody:
         description: Base64 encoded document and parameters
         required: true
@@ -88,12 +81,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConvertToMarkdownResponse'
-        '401':
-          description: Unauthorized - API key missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '422':
           description: Unprocessable Entity - Invalid input file or parameters
           content:
@@ -106,5 +93,3 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-security:
-  - ApiKeyAuth: []

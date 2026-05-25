@@ -5,12 +5,11 @@ services:
     ports:
       - "127.0.0.1:8110:8000"
     restart: always
-    volumes:
-      - ./config/config.json:/config/config.json
     networks:
       - backend
+    env_file:
+      - .env
     environment:
-      CONFIG_PATH: '/config/config.json'
       REDIS_HOST: 'redis'
     depends_on:
       redis:

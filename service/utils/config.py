@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import logging
 from os import environ
 
 from pydantic import BaseModel
@@ -8,10 +8,6 @@ from typing import Optional
 
 
 class Config(BaseModel):
-    class AuthConfig(BaseModel):
-        cache_valid_delta: timedelta
-        api_keys_hash: list[str]
-
     class Running(BaseModel):
         logging_level: int
 
@@ -21,8 +17,6 @@ class Config(BaseModel):
         default_model_image: str
         base_url: Optional[str] = None
 
-
-    auth: AuthConfig
     openai: Openai
     yandex_ocr_api_key: str
 
@@ -30,5 +24,18 @@ class Config(BaseModel):
 
     @staticmethod
     def get_config() -> Config:
-        with open(environ['CONFIG_PATH']) as config_file:
-            return Config.model_validate_json(config_file.read())
+        return Config(
+            openai=Config.Openai(
+                api_key=environ['OPENAI_API_KEY'],
+                default_model_ocr=environ['OPENAI_DEFAULT_MODEL_OCR'],
+                default_model_image=environ['OPENAI_DEFAULT_MODEL_IMAGE'],
+                base_url=environ.get('OPENAI_BASE_URL') or None,
+            ),
+            yandex_ocr_api_key=environ['YANDEX_OCR_API_KEY'],
+            running=Config.Running(
+                logging_level=logging.getLevelNamesMapping().get(
+                    environ.get('LOGGING_LEVEL', 'INFO').upper(),
+                    logging.INFO,
+                ),
+            ),
+        )
